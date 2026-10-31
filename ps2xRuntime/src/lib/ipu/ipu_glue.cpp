@@ -21,6 +21,9 @@ DMACh ipu1ch;
 IpuDmacRegsShim dmacRegs;
 alignas(16) IPUregisters ipuRegs;
 
+// IPU register writes so far: a movie is playing while this moves (the game frame cap in EeScheduler.cpp stands aside).
+uint64_t g_ps2xIpuActivity = 0;
+
 void ReadFIFO_IPUout(mem128_t *out);
 void WriteFIFO_IPUin(const mem128_t *value);
 
@@ -172,6 +175,7 @@ namespace ps2ipu
     {
         if (!g_attached)
             return;
+        ++g_ps2xIpuActivity;
         Scope scope;
         (void)ipuWrite32(physAddr, value);
     }
@@ -180,6 +184,7 @@ namespace ps2ipu
     {
         if (!g_attached)
             return;
+        ++g_ps2xIpuActivity;
         Scope scope;
         if (ipuWrite64(physAddr, value))
             (void)ipuWrite32(physAddr, static_cast<uint32_t>(value));

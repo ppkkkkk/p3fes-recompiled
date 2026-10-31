@@ -105,6 +105,13 @@ namespace
     // EE cycle at which the next VBlankStart is due (kept by the scheduling code below).
     uint64_t g_nextVBlankStartCycle = 0u;
 
+    // Movies: Sofdec paces its decoding by the game loop, so the cap is off while the IPU is in use.
+    uint64_t g_frameCapIpuSeen = 0u;
+    uint64_t g_frameCapIpuTick = 0u;
+    // Frame cap (see checkpointDue): thread to put to sleep until the vblank after g_frameCapAfterTick, 0 = none.
+    int g_frameCapThread = 0;
+    uint64_t g_frameCapAfterTick = 0u;
+
     template <typename Map>
     int allocatePositiveId(int &nextId, const Map &objects)
     {
@@ -302,6 +309,23 @@ void EeScheduler::run()
                 continue;
             }
         }
+        if (g_frameCapThread != 0)
+        {
+            if (running->id == g_frameCapThread && running->invocations.empty() && m_vsyncTick <= g_frameCapAfterTick)
+            {
+                // Frame cap: sleep until the next vblank. Waking sets $v0 (a wait's return value); put it back.
+                const __m128i savedV0 = running->activeContext().r[2];
+                running->wait = EeWaitState{EeWaitReason::VSync, EeVSyncWait{g_frameCapAfterTick, 0},
+                                            [savedV0](R5900Context &ctx) { ctx.r[2] = savedV0; }};
+                running->status = running->suspendCount == 0 ? EeThreadStatus::Waiting : EeThreadStatus::WaitingSuspended;
+                g_frameCapThread = 0;
+                m_currentThreadId = 0;
+                publishSnapshot();
+                continue;
+            }
+            if (running->id == g_frameCapThread)
+                g_frameCapThread = 0;
+        }
         R5900Context &context = running->activeContext();
         if (m_debugPublishCountdown == 0u)
         {
@@ -475,6 +499,7 @@ void EeScheduler::postEvent(EeEvent event)
 }
 
 void ps2AudioOnVBlank(); // ps2_runtime.cpp
+extern uint64_t g_ps2xIpuActivity; // ipu_glue.cpp
 
 namespace
 {
@@ -488,8 +513,10 @@ namespace
     // Game frame cap: Persona 3 FES counts its main-loop iterations at 0x7CE10C (kwlnUpdate's frame counter). On the
     // console its logic runs at 30 updates/s; with the generated code's cheaper cycle estimates, lighter scenes finish a
     // frame within one field and the whole game ran at 60 (twice the speed). When the counter advances less than
-    // PS2X_FRAME_CAP_FIELDS (default 2) fields after its previous advance, the rest of the field is charged as busy
-    // time, as if the frame had overrun it on the console. PS2X_FRAME_CAP_FIELDS=1 turns the cap off;
+    // PS2X_FRAME_CAP_FIELDS (default 2) fields after its previous advance, the thread that advanced it sleeps until
+    // the next vblank, as if its frame had overrun the field on the console. Other threads (the movie decoder, sound)
+    // keep running meanwhile: charging the rest of the field as busy time instead starved them and slowed the
+    // movies down. PS2X_FRAME_CAP_FIELDS=1 turns the cap off;
     // PS2X_FRAME_COUNTER_ADDR moves the counter (0 = off).
     struct FrameCap
     {
@@ -541,12 +568,24 @@ bool EeScheduler::checkpointDue(uint32_t cycles) noexcept
         if (count != cap.lastCount)
         {
             const uint64_t tick = m_vsyncTick;
-            if (cap.primed && count == cap.lastCount + 1u && tick - cap.lastTick < cap.fields &&
-                g_nextVBlankStartCycle > m_eeCycle)
+            if (g_ps2xIpuActivity != g_frameCapIpuSeen)
             {
-                // Finish this field idle (as if the frame had overrun it); the vblank wait then lands one field later.
-                accountCycles(static_cast<uint32_t>(std::min<uint64_t>(g_nextVBlankStartCycle - m_eeCycle, 0xFFFFFFFFu)));
+                g_frameCapIpuSeen = g_ps2xIpuActivity;
+                g_frameCapIpuTick = tick;
+            }
+            const bool moviePlaying = g_frameCapIpuTick != 0u && tick - g_frameCapIpuTick < 30u;
+            const GuestThread *running = currentThread();
+            if (!moviePlaying && cap.primed && count == cap.lastCount + 1u && tick - cap.lastTick < cap.fields && running != nullptr &&
+                running->invocations.empty() && !m_insideInterrupt)
+            {
+                // The dispatch loop puts this thread to sleep until the next vblank (its vblank wait then lands one
+                // field later).
+                g_frameCapThread = running->id;
+                g_frameCapAfterTick = tick;
                 cap.lastTick = tick + 1u;
+                cap.lastCount = count;
+                m_checkpointPending.store(true, std::memory_order_release);
+                return true;
             }
             else
             {
