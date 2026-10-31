@@ -29,3 +29,18 @@ separate path (CRI ADX: CRI_ADXI.IRX with its own RPC server 0x90000200 and DTX 
 - `PS2X_RPC_LOG=1` (RPC words), `PS2X_IOP_TRACE=<n>` + `PS2X_IOP_TRACE_NOCLIB=1` (IOP import calls with arguments),
   `PS2X_RAM_DUMP=<field>:<path>` (EE RAM, and IOP RAM to `<path>.iop`), `PS2X_SIFDMA_LOG=1` / `PS2X_SIFDMA_DUMP=<addr>`.
 - Module load order and bases: see `[IOP] loaded IRX` lines (SKSESQ is id 15).
+
+## Packets seen (PS2X_RPC_LOG, 8 words)
+SDR user command 0x90F0; word 0 = module (0x01000000 HSYNTH, 0x04000000 SESQ), word 1 = command, then arguments.
+- `[01000000,0,3,-1,0x0E9F40,0x2860,0x5010,0x08C180]`: HSYNTH bind, .hd at IOP 0x0E9F40 (10336 bytes), samples at
+  SPU2 address 0x08C180. A second one binds the .hd at 0x0EC7C0.
+- `[04000000,0,0,-1,0x0F6F80,0x0F40]` and `[04000000,0,0,-1,0x0F7EC0,0x2DE0]`: SESQ data for sets 0 and 1 (the .sq);
+  `[04000000,0,5,set,set,0x00782C00]` follows each (0x782C00 is the EE packet buffer).
+- Per menu move: `[04000000,3,0,1,0xA,..]` (status, -0x12B), `[04000000,2,0,2,0xA,n,0x40]` (control, -0x130),
+  `[04000000,2,0,0,0xA,..]` (returns a counter).
+- IOP side: SKSESQ calls MODSESQ export 6 for the set bind with a3 = 0x782C00, export 7 then export 9 (play, mode
+  0x101) for each request; export 9 fails because the set's "sequences present" mask is 0.
+- IOP heap: 0x0F6F80 is first a 4 KB transfer buffer (allocated and freed twice), then allocated for the set-0 .sq
+  (3904 bytes); 4 KB sample chunks are still DMA'd to 0x0F6F80 afterwards without a new allocation, overwriting it.
+  Next: check whether MODSESQ export 6 is meant to read the set data through a3, and where the "present" mask is
+  computed.

@@ -49,7 +49,7 @@ namespace ps2_syscalls
                 {
                     std::string out;
                     char buf[16];
-                    for (uint32_t i = 0u; i + 4u <= n && i < 16u; i += 4u)
+                    for (uint32_t i = 0u; i + 4u <= n && i < 32u; i += 4u)
                     {
                         std::snprintf(buf, sizeof(buf), "%s%08X", i ? "," : "", word0(p + i, 4u) < 0 ? 0u : static_cast<unsigned>(word0(p + i, 4u)));
                         out += buf;

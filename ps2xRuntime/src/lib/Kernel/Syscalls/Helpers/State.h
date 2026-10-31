@@ -189,13 +189,13 @@ struct SifRpcDebugEvent
     uint32_t flags = 0;
     uint32_t sendPreviewSize = 0;
     uint32_t recvPreviewSize = 0;
-    uint8_t sendPreview[16]{};
-    uint8_t recvPreview[16]{};
+    uint8_t sendPreview[32]{};
+    uint8_t recvPreview[32]{};
     int32_t result = 0;
 };
 
 static constexpr size_t kSifRpcDebugHistoryCount = 256u;
-static constexpr size_t kSifRpcDebugPreviewBytes = 16u;
+static constexpr size_t kSifRpcDebugPreviewBytes = 32u;
 static constexpr uint32_t kSifRpcDebugFlagNowait = 1u << 0;
 static constexpr uint32_t kSifRpcDebugFlagHandledByHle = 1u << 1;
 static constexpr uint32_t kSifRpcDebugFlagCallback = 1u << 2;
