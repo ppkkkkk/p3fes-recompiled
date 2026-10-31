@@ -29,6 +29,10 @@ static inline unsigned long long kzvu_xgetbv(unsigned int index)
 	return (static_cast<unsigned long long>(edx) << 32) | eax;
 }
 #define _xgetbv(i) kzvu_xgetbv(i)
+#if !defined(_WIN32)
+#include <strings.h>
+#define _stricmp strcasecmp
+#endif
 #endif
 #include <string>
 #include <vector>
@@ -73,6 +77,16 @@ static ProcessorFeatures DetectProcessorFeatures()
 		f.vectorISA = avx2 ? ProcessorFeatures::VectorISA::AVX2 : ProcessorFeatures::VectorISA::AVX;
 	else
 		f.vectorISA = ProcessorFeatures::VectorISA::SSE4;
+	// Same override as kzgs (shim/KzMultiISA.cpp); it also decides whether microVU emits AVX (kzvuInit).
+	if (const char* over = std::getenv("OVERRIDE_VECTOR_ISA"))
+	{
+		if (_stricmp(over, "avx2") == 0 || _stricmp(over, "avx512f") == 0)
+			f.vectorISA = ProcessorFeatures::VectorISA::AVX2;
+		else if (_stricmp(over, "avx") == 0)
+			f.vectorISA = ProcessorFeatures::VectorISA::AVX;
+		else if (_stricmp(over, "sse4") == 0)
+			f.vectorISA = ProcessorFeatures::VectorISA::SSE4;
+	}
 	f.hasSlowGather = false;
 	return f;
 }
@@ -120,6 +134,7 @@ bool kzvu::AllocCodeCache(u32 bytes, std::string* err)
 		return false;
 	}
 #else
+	// p3fes: Linux build.
 	void* mem = mmap(nullptr, bytes, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (mem == MAP_FAILED)
 	{

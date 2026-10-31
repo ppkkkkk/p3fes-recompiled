@@ -3,9 +3,31 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
+#include <cstdio>
 
 namespace ps2x::iop::detail
 {
+    namespace
+    {
+        // PS2X_IOP_MEMLOG=1: log every IOP heap allocation, failure and free.
+        bool memLog()
+        {
+            static const bool on = std::getenv("PS2X_IOP_MEMLOG") != nullptr;
+            return on;
+        }
+
+        // Freed heap blocks are reused (first fit from the heap base). The allocator used to search from a cursor that
+        // never moved back, so freed memory was never handed out again and long sessions could exhaust the IOP heap
+        // (KillzoneRecomp's sound driver lost its effects that way; their runtime patch 0028, ported here).
+        // PS2X_IOP_HEAP_REUSE=0 restores the old behaviour for A/B tests.
+        bool heapReuse()
+        {
+            static const bool on = [] { const char *v = std::getenv("PS2X_IOP_HEAP_REUSE"); return !(v && v[0] == '0'); }();
+            return on;
+        }
+    }
+
     namespace
     {
         constexpr uint32_t kDmaSpu0Chcr = 0x1F8010C8u;
@@ -380,7 +402,7 @@ namespace ps2x::iop::detail
             return address;
         }
 
-        uint32_t candidate = alignUp(m_heapCursor, alignment);
+        uint32_t candidate = alignUp(heapReuse() ? HeapBase : m_heapCursor, alignment);
         for (;;)
         {
             bool overlap = false;
@@ -397,7 +419,14 @@ namespace ps2x::iop::detail
                 break;
         }
         if (candidate > HeapLimit || size > HeapLimit - candidate)
+        {
+            if (memLog())
+                std::fprintf(stderr, "[iopmem] ALLOC FAILED size %u cursor %06x blocks %zu\n", size, m_heapCursor,
+                             m_allocations.size());
             return 0u;
+        }
+        if (memLog())
+            std::fprintf(stderr, "[iopmem] alloc %06x size %u\n", candidate, size);
         m_allocations.push_back({candidate, size});
         markOwned(candidate, size);
         m_heapCursor = std::max(m_heapCursor, candidate + size);
@@ -411,6 +440,8 @@ namespace ps2x::iop::detail
                                         { return candidate.address == address; });
         if (block == m_allocations.end())
             return false;
+        if (memLog())
+            std::fprintf(stderr, "[iopmem] free %06x size %u\n", block->address, block->size);
         std::fill(m_owned.begin() + block->address,
                   m_owned.begin() + block->address + block->size,
                   uint8_t{0});
@@ -420,7 +451,21 @@ namespace ps2x::iop::detail
 
     uint32_t IopMemory::maxFreeMemory() const
     {
-        return m_heapCursor < HeapLimit ? HeapLimit - m_heapCursor : 0u;
+        if (!heapReuse())
+            return m_heapCursor < HeapLimit ? HeapLimit - m_heapCursor : 0u;
+        // The largest free gap between the allocations.
+        std::vector<Allocation> sorted(m_allocations);
+        std::sort(sorted.begin(), sorted.end(), [](const Allocation &a, const Allocation &b) { return a.address < b.address; });
+        uint32_t best = 0u, at = HeapBase;
+        for (const auto &block : sorted)
+        {
+            if (block.address > at)
+                best = std::max(best, block.address - at);
+            at = std::max(at, block.address + block.size);
+        }
+        if (HeapLimit > at)
+            best = std::max(best, HeapLimit - at);
+        return best;
     }
 
     std::optional<IopMemory::Allocation> IopMemory::allocationContaining(uint32_t address) const

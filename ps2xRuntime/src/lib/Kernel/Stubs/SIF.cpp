@@ -1,3 +1,4 @@
+#include <map>
 #include "Common.h"
 #include "SIF.h"
 #include "../Syscalls/RPC.h"
@@ -662,6 +663,31 @@ namespace ps2_stubs
         {
             setReturnS32(ctx, 0);
             return;
+        }
+
+        // Debug aid: PS2X_SIFDMA_LOG=1 prints, every 500 calls, the destinations and sizes the EE sent to the IOP.
+        static const bool sifDmaLog = std::getenv("PS2X_SIFDMA_LOG") != nullptr;
+        if (sifDmaLog)
+        {
+            static std::map<uint32_t, std::pair<uint32_t, uint32_t>> byDest; // dest -> (calls, bytes)
+            static uint32_t calls = 0;
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                Ps2SifDmaTransfer x{};
+                if (const uint8_t *e = getConstMemPtr(rdram, dmatAddr + i * static_cast<uint32_t>(sizeof(x))))
+                    std::memcpy(&x, e, sizeof(x));
+                auto &slot = byDest[x.dest];
+                ++slot.first;
+                slot.second += static_cast<uint32_t>(x.size);
+            }
+            if (++calls % 500u == 0u)
+            {
+                std::fprintf(stderr, "[sifdma] %u calls:", calls);
+                for (const auto &[dest, v] : byDest)
+                    std::fprintf(stderr, " %06x:%ux%uB", dest, v.first, v.first ? v.second / v.first : 0u);
+                std::fprintf(stderr, " (ra=%08x)\n", getRegU32(ctx, 31));
+                byDest.clear();
+            }
         }
 
         std::array<Ps2SifDmaTransfer, 32u> pending{};

@@ -32,6 +32,7 @@
 #include <string>
 #include <vector>
 #include <cstdio>
+#include "audio/stretch.hpp"
 #include <cstdlib>
 
 #if !defined(PLATFORM_VITA)
@@ -42,41 +43,28 @@ namespace
     std::atomic<ps2x::iop::IopSubsystem *> g_spu2AudioSource{nullptr};
     AudioStream g_spu2Stream{};
     bool g_spu2StreamActive = false;
-    constexpr size_t kSpu2MaxLatencyFrames = 9600u; // 200 ms at 48 kHz: beyond that the oldest samples are dropped
-    constexpr size_t kSpu2PrimeFrames = 2400u;      // 50 ms queued before output starts (or restarts)
-    // Output health for the [speed] log line: times the output ran dry, and frames dropped for latency.
-    std::atomic<uint32_t> g_audioUnderruns{0u};
-    std::atomic<uint32_t> g_audioDroppedFrames{0u};
-    std::atomic<uint32_t> g_audioQueuedFrames{0u};
+    // The SPU2's output goes through ps2-native-recomp's SoundPipe (audio/stretch.hpp): the EE thread pushes what the
+    // SPU2 made at every vblank, and the device thread plays it, time-stretched without changing the pitch when the
+    // game runs below full speed instead of running dry and clicking. PS2X_AUDIO_STRETCH=0 plays it unstretched.
+    ps2sound::PipeConfig makePipeConfig()
+    {
+        ps2sound::PipeConfig config;
+        if (const char *v = std::getenv("PS2X_AUDIO_STRETCH"); v && v[0] == '0')
+            config.stretch = false;
+        return config;
+    }
+    ps2sound::SoundPipe g_soundPipe{makePipeConfig()};
+
+    double steadySeconds()
+    {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
 
     void spu2AudioCallback(void *buffer, unsigned int frames)
     {
         int16_t *out = static_cast<int16_t *>(buffer);
-        size_t produced = 0u;
-        // Jitter buffer: the SPU2 produces samples in bursts (per IOP slice) and, when emulation runs behind, less
-        // than real time. Draining whatever is there each callback turned that into a click every few milliseconds.
-        // Output waits until kSpu2PrimeFrames are queued, and after running dry waits again, so short shortfalls
-        // become rare short gaps instead of constant crackle.
-        static bool primed = false;
-        if (ps2x::iop::IopSubsystem *source = g_spu2AudioSource.load(std::memory_order_acquire))
-        {
-            if (!primed && source->pendingAudioFrames() >= kSpu2PrimeFrames + frames)
-                primed = true;
-            const size_t pending = source->pendingAudioFrames();
-            g_audioQueuedFrames.store(static_cast<uint32_t>(pending), std::memory_order_relaxed);
-            if (primed)
-            {
-                if (pending > frames + kSpu2MaxLatencyFrames)
-                    g_audioDroppedFrames.fetch_add(static_cast<uint32_t>(pending - frames - kSpu2MaxLatencyFrames),
-                                                   std::memory_order_relaxed);
-                produced = source->drainAudio(out, frames, kSpu2MaxLatencyFrames);
-                if (produced < frames)
-                {
-                    primed = false;
-                    g_audioUnderruns.fetch_add(1u, std::memory_order_relaxed);
-                }
-            }
-        }
+        g_soundPipe.render(out, frames, steadySeconds());
+        const size_t produced = frames;
         // PS2X_AUDIO_DUMP=<file> saves the emulated samples (s16le, stereo, 48 kHz) without the filler silence, to
         // check the audio even when emulation runs slower than real time.
         static std::FILE *pcm = []() -> std::FILE *
@@ -89,7 +77,6 @@ namespace
             std::fwrite(out, sizeof(int16_t) * 2u, produced, pcm);
             std::fflush(pcm);
         }
-        std::fill(out + produced * 2u, out + static_cast<size_t>(frames) * 2u, int16_t{0}); // no data: silence
     }
 
     // P3FES: with no audio device (headless test runs) but PS2X_AUDIO_DUMP set, a thread drains every emulated
@@ -155,6 +142,33 @@ namespace
 #endif
 
 void ps2PadLatchHostInput(); // ps2_pad.cpp
+
+#if !defined(PLATFORM_VITA)
+// Called by the EE scheduler at every vblank (EE thread): hands the SPU2's new samples to the sound pipe and marks a
+// video frame, which is how the pipe measures how fast the game runs.
+void ps2AudioOnVBlank()
+{
+    if (!g_spu2StreamActive)
+        return;
+    ps2x::iop::IopSubsystem *source = g_spu2AudioSource.load(std::memory_order_acquire);
+    if (!source)
+        return;
+    const double now = steadySeconds();
+    static std::vector<int16_t> buffer(8192u * 2u);
+    for (;;)
+    {
+        const size_t frames = source->drainAudio(buffer.data(), 8192u, SIZE_MAX);
+        if (frames == 0u)
+            break;
+        g_soundPipe.push(buffer.data(), frames, now);
+        if (frames < 8192u)
+            break;
+    }
+    g_soundPipe.frame(now);
+}
+#else
+void ps2AudioOnVBlank() {}
+#endif
 static std::string g_hostWindowTitle; // for the speed readout in the title bar
 #include "ps2_host_vu1.h"
 
@@ -2811,10 +2825,21 @@ void PS2Runtime::run()
                 if (++logCountdown >= 5)
                 {
                     logCountdown = 0;
-                    std::fprintf(stderr, "[speed] %.1f vblanks/s (%.0f%% of a PS2), %.1f game frames/s; audio: %u underruns, "
-                                         "%u frames dropped, %u queued\n",
-                                 vps, vps * 100.0 / 59.94, fps, g_audioUnderruns.exchange(0u),
-                                 g_audioDroppedFrames.exchange(0u), g_audioQueuedFrames.load());
+#if !defined(PLATFORM_VITA)
+                    const ps2sound::PipeStats audio = g_soundPipe.stats();
+                    static uint64_t lastDry = 0u, lastStretched = 0u, lastDropped = 0u;
+                    std::fprintf(stderr, "[speed] %.1f vblanks/s (%.0f%% of a PS2), %.1f game frames/s; audio: %llu ran dry, "
+                                         "%.2f s stretched, %llu frames dropped, %.0f ms queued\n",
+                                 vps, vps * 100.0 / 59.94, fps, (unsigned long long)(audio.dry - lastDry),
+                                 (audio.stretched - lastStretched) / 48000.0, (unsigned long long)(audio.dropped - lastDropped),
+                                 g_soundPipe.queued_ms());
+                    lastDry = audio.dry;
+                    lastStretched = audio.stretched;
+                    lastDropped = audio.dropped;
+#else
+                    std::fprintf(stderr, "[speed] %.1f vblanks/s (%.0f%% of a PS2), %.1f game frames/s\n", vps,
+                                 vps * 100.0 / 59.94, fps);
+#endif
                 }
             }
         }

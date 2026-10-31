@@ -470,6 +470,8 @@ void EeScheduler::postEvent(EeEvent event)
     m_eventCv.notify_one();
 }
 
+void ps2AudioOnVBlank(); // ps2_runtime.cpp
+
 namespace
 {
     // Busy EE cycles charged since the last vblank (for PS2X_EE_CYCLE_STATS).
@@ -2111,6 +2113,7 @@ void EeScheduler::processDueDeadlines()
                     }
                 }
                 g_busyCyclesThisField = 0u;
+                ps2AudioOnVBlank(); // SPU2 output to the host sound pipe (ps2_runtime.cpp)
                 // Pace against the host clock, but never "catch up": after a stretch slower than real time
                 // (loading, a heavy scene), restart the schedule from now instead of running fields back to back.
                 auto hostBase = scheduled.hostDeadline;

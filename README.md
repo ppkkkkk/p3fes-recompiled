@@ -148,6 +148,7 @@ See [`p3fes/README.md`](p3fes/README.md). In short:
 | `PS2X_VU1=interp` | Built-in VU1 interpreter instead of PCSX2's microVU recompiler |
 | `PS2X_EE_CYCLE_SCALE=4` | Multiplier on the EE time charged by the recompiled code (1 = unscaled; 4 gives the console's 30 fps in 3D) |
 | `PS2X_SHOW_SPEED=0` | Hide the game FPS / VPS readout in the window title |
+| `PS2X_AUDIO_STRETCH=0` | Play the sound unstretched when the game runs below full speed (it runs dry instead) |
 | `PS2X_GS_GPU=1` | Built-in OpenGL GS backend instead of the CPU rasterizer |
 | `PS2X_GS_THREAD=1` | Run the GS backend on its own thread |
 | `PS2X_MEMCARD1=<path>` / `none` | Memory card for slot 1 (default `memcards/Mcd001.ps2`) |
@@ -158,7 +159,7 @@ See [`p3fes/README.md`](p3fes/README.md). In short:
 | `PS2X_PROFILE=<file>` | Linux sampling profiler; summarise with `p3fes/scripts/prof_report.py` |
 
 Debug traces: `PS2X_SPU2_DIAG`, `PS2X_GS_DIAG`, `PS2X_IPU_TRACE`, `PS2X_DMA_LOG`, `PS2X_CD_LOG`, `PS2X_IOP_CD_LOG`,
-`PS2X_RPC_LOG`, `PS2X_IOP_RPC_COUNTS`, `PS2X_IOP_TRACE`, `PS2X_EE_CYCLE_STATS`, `PS2X_GIF_TRACE`, `PS2X_PCSX2_SHOTS`,
+`PS2X_RPC_LOG`, `PS2X_IOP_RPC_COUNTS`, `PS2X_SIFDMA_LOG`, `PS2X_IOP_MEMLOG`, `PS2X_IOP_TRACE`, `PS2X_EE_CYCLE_STATS`, `PS2X_GIF_TRACE`, `PS2X_PCSX2_SHOTS`,
 `PS2X_PAD_SCRIPT` (with `PS2X_PAD_SCRIPT_CLOCK=fields`), `PS2X_EE_TRACE_CALLS`, `PS2X_LOG_SUSPEND`.
 
 </details>
@@ -173,8 +174,10 @@ Debug traces: `PS2X_SPU2_DIAG`, `PS2X_GS_DIAG`, `PS2X_IPU_TRACE`, `PS2X_DMA_LOG`
 - [urban-reign-recomp](https://github.com/thiagordsfx/urban-reign-recomp) by thiagordsfx: the PCSX2 GS bridge design.
 - [PCSX2](https://github.com/PCSX2/pcsx2): the IPU, the GS and microVU (VU1 recompiler), and the accuracy reference.
 - [KillzoneRecomp](https://github.com/drakolordx7/KillzoneRecomp) by drakolordx7: kzvu, PCSX2's microVU packaged for
-  PS2Recomp (`third_party/kzvu`, ported here to clang and MinGW).
+  PS2Recomp (`third_party/kzvu`, ported here to clang and MinGW), and the IOP heap reuse fix.
 - [ps2-web-recomp](https://github.com/snuri00/ps2-web-recomp): SPU2, IPU and GPU GS reference.
+- [ps2-native-recomp](https://github.com/exoteric33/ps2-native-recomp) by Samir Nuri and exoteric33: the sound
+  time-stretcher (`ps2xRuntime/src/lib/audio/stretch.*`, MIT) that keeps audio smooth below full speed.
 - The [snaku Persona 3 FES decompilation](https://github.com/snaku/Persona3-FES-Decompilation), for function names.
 - The [Persona 4 decompilation](https://github.com/Raikaru/Persona4-Decompilation) by Raikaru: names for shared
   engine, RenderWare and CRI functions, transferred by `p3fes/scripts/p4_names.py` (`p3fes/names/p4_names.csv`).

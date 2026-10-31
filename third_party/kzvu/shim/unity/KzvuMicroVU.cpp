@@ -10,7 +10,15 @@
 #if defined(_MSC_VER)
 #include <intrin.h>
 #else
+// p3fes: clang/GCC equivalent of MSVC's __cpuid.
+#include <cpuid.h>
 #include <x86intrin.h>
+static inline void kzvu_cpuid(int r[4], int leaf) { __cpuid_count(leaf, 0, r[0], r[1], r[2], r[3]); }
+#define __cpuid(r, leaf) kzvu_cpuid((r), (leaf))
+#if !defined(_rotl64)
+static inline unsigned long long kzvu_rotl64(unsigned long long v, int n) { return (v << (n & 63)) | (v >> ((64 - n) & 63)); }
+#define _rotl64(v, n) kzvu_rotl64((v), (n))
+#endif
 #endif
 #include <memory>
 #include <unordered_map>
@@ -48,6 +56,19 @@ void kzvuVu1CodeCounters(uint64_t* codeBytes, uint32_t* programsCreated)
 {
 	*codeBytes = static_cast<uint64_t>(microVU1.prog.x86ptr - microVU1.prog.x86start);
 	*programsCreated = static_cast<uint32_t>(microVU1.prog.total);
+}
+
+void kzvuVuCodeState(int vu, uint64_t* codeBytes, uint32_t* programs)
+{
+	const microVU& m = vu ? microVU1 : microVU0;
+	*codeBytes = static_cast<uint64_t>(m.prog.x86ptr - m.prog.x86start);
+	*programs = static_cast<uint32_t>(m.prog.total);
+}
+
+void kzvuVuSetCacheEnd(int vu, uint8_t* end)
+{
+	microVU& m = vu ? microVU1 : microVU0;
+	m.prog.x86end = end;
 }
 
 void kzvuVu1CodeStats(KzvuVu1CodeStats* out)
@@ -161,7 +182,7 @@ namespace
 	// MSVC accepts _mm_aesenc_si128 without any /arch flag; clang wants the target feature on the function.
 	__attribute__((target("aes")))
 #endif
-	MemoKey memoHash(const u8* p)
+	MemoKey memoHashAes(const u8* p)
 	{
 		const __m128i* q = reinterpret_cast<const __m128i*>(p);
 		__m128i a0 = _mm_set_epi64x(0x243F6A8885A308D3ll, 0x13198A2E03707344ll);
@@ -192,6 +213,35 @@ namespace
 		k.a = static_cast<u64>(_mm_cvtsi128_si64(r));
 		k.b = static_cast<u64>(_mm_extract_epi64(r, 1));
 		return k;
+	}
+
+	// Same kind of key for CPUs without AES-NI (Core 2 Penryn, Nehalem, Clarkdale and older Pentium/Celeron: the SSE4.1 baseline, issue #8): two
+	// independent multiply-rotate lanes per 8-byte word, folded at the end. Slower than the AES path but only a few microseconds
+	// per VU1 code change.
+	MemoKey memoHashScalar(const u8* p)
+	{
+		constexpr u64 K1 = 0x9E3779B97F4A7C15ull, K2 = 0xC2B2AE3D27D4EB4Full, K3 = 0x165667B19E3779F9ull, K4 = 0xD6E8FEB86659FD93ull;
+		u64 a = 0x243F6A8885A308D3ull, b = 0x13198A2E03707344ull;
+		for (size_t i = 0; i < 0x4000; i += 8)
+		{
+			u64 w;
+			std::memcpy(&w, p + i, 8);
+			a = _rotl64(a ^ (w * K1), 31) * K2;
+			b = _rotl64(b + (w ^ K3) * K4, 27) * K1 + i;
+		}
+		auto fin = [](u64 h) { h ^= h >> 33; h *= 0xFF51AFD7ED558CCDull; h ^= h >> 33; h *= 0xC4CEB9FE1A85EC53ull; return h ^ (h >> 33); };
+		MemoKey k;
+		k.a = fin(a ^ _rotl64(b, 17));
+		k.b = fin(b + a * K3);
+		return k;
+	}
+
+	MemoKey memoHash(const u8* p)
+	{
+		static const bool aes = [] { // KZ_VU_HASH_SCALAR=1 tests the non-AES path
+			const char* e = std::getenv("KZ_VU_HASH_SCALAR");
+			int r[4]; __cpuid(r, 1); return ((r[2] >> 25) & 1) != 0 && !(e && *e == '1'); }();
+		return aes ? memoHashAes(p) : memoHashScalar(p);
 	}
 
 	// The ranges the program was compiled from equal `mem` (the program's own copy of them is prog.data).
@@ -241,12 +291,8 @@ void kzvuVu1CodeChanged(uint32_t offset, uint32_t size)
 	u32 nnow = 0;
 	for (u32 i = 0; i < slots; i += 2)
 	{
-		// two 16-byte slots at once; the program pointer is the second qword of each
-		// (p3fes: SSE4.1 instead of AVX2, the engine targets SSE4.1 hosts)
-		const __m128i v0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mVU.prog.quick[i]));
-		const __m128i v1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mVU.prog.quick[i]) + 1);
-		const __m128i m = _mm_set_epi64x(-1, 0);
-		if (_mm_testz_si128(_mm_or_si128(v0, v1), m))
+		// two 16-byte slots; the program pointer is the second qword of each (SSE: the build may target CPUs without AVX)
+		if (!mVU.prog.quick[i].prog && !mVU.prog.quick[i + 1].prog)
 			continue;
 		for (u32 j = i; j < i + 2; j++)
 			if (microProgram* p = mVU.prog.quick[j].prog)

@@ -415,6 +415,7 @@ add_library(ps2_runtime ${PS2X_RUNTIME_LIBRARY_TYPE}
     src/lib/ps2_runtime.cpp
     src/lib/ps2_vif1_interpreter.cpp
     src/lib/ps2_host_vu1.cpp # VU1 on PCSX2's microVU (third_party/kzvu)
+    src/lib/audio/stretch.cpp # sound time-stretching (from ps2-native-recomp, MIT)
     src/lib/vu/ps2_vu1_core.cpp
     src/lib/vu/ps2_vu1_upper.cpp
     src/lib/vu/ps2_vu1_lower.cpp
