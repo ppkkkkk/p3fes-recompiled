@@ -103,6 +103,10 @@ namespace
     constexpr uint64_t kVBlankDurationCycles = microsecondsToEeCycles(500u);
     constexpr uint64_t kAlarmTickCycles = microsecondsToEeCycles(kAlarmTickMicroseconds);
 
+    // PS2X_DEADLINE_LOG counters
+    uint64_t g_dbgEvents[8] = {};
+    uint64_t g_dbgWaitSignaled = 0, g_dbgWaitTimeout = 0, g_dbgWaitForever = 0, g_dbgPacingWaits = 0;
+
     // EE cycle at which the next VBlankStart is due (kept by the scheduling code below).
     uint64_t g_nextVBlankStartCycle = 0u;
 
@@ -2109,6 +2113,7 @@ void EeScheduler::processPendingEvents()
     }
     for (const EeEvent &event : pending)
     {
+        ++g_dbgEvents[static_cast<size_t>(event.type) & 7u];
         processEvent(event);
     }
 
@@ -2145,7 +2150,12 @@ void EeScheduler::processDueDeadlines()
                         std::fprintf(stderr, " t%d@%+lld/%+lldms", (int)item.event.type,
                                      (long long)item.deadlineCycle - (long long)m_eeCycle,
                                      (long long)std::chrono::duration_cast<std::chrono::milliseconds>(item.hostDeadline - now).count());
-                    std::fprintf(stderr, "\n");
+                    std::fprintf(stderr, " | events wake=%llu alarm=%llu dmac=%llu; waits signaled=%llu timeout=%llu forever=%llu pacing=%llu\n",
+                                 (unsigned long long)g_dbgEvents[4], (unsigned long long)g_dbgEvents[5], (unsigned long long)g_dbgEvents[3],
+                                 (unsigned long long)g_dbgWaitSignaled, (unsigned long long)g_dbgWaitTimeout,
+                                 (unsigned long long)g_dbgWaitForever, (unsigned long long)g_dbgPacingWaits);
+                    for (auto &c : g_dbgEvents) c = 0;
+                    g_dbgWaitSignaled = g_dbgWaitTimeout = g_dbgWaitForever = g_dbgPacingWaits = 0;
                 }
             }
             for (const ScheduledEvent &item : m_deadlines)
@@ -2166,6 +2176,7 @@ void EeScheduler::processDueDeadlines()
 
             if (now < pacingDeadline)
             {
+                ++g_dbgPacingWaits;
                 m_eventCv.wait_until(lock, pacingDeadline, [this]()
                                      { return !m_events.empty() ||
                                               m_stopRequested.load(std::memory_order_acquire); });
@@ -2432,6 +2443,7 @@ void EeScheduler::waitForEvent()
     const bool hasTimerDeadline = timerCycles != std::numeric_limits<uint64_t>::max();
     if (m_deadlines.empty() && !hasTimerDeadline)
     {
+        ++g_dbgWaitForever;
         m_eventCv.wait(lock, [this]()
                        { return !m_events.empty() || m_stopRequested.load(std::memory_order_acquire); });
         return;
@@ -2466,6 +2478,7 @@ void EeScheduler::waitForEvent()
     const bool signaled = m_eventCv.wait_until(lock, hostDeadline, [this]()
                                                { return !m_events.empty() ||
                                                         m_stopRequested.load(std::memory_order_acquire); });
+    ++(signaled ? g_dbgWaitSignaled : g_dbgWaitTimeout);
     if (!signaled)
     {
         const uint64_t elapsed = deadlineCycle > m_eeCycle ? deadlineCycle - m_eeCycle : 0u;

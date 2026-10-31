@@ -507,12 +507,13 @@ namespace ps2x::iop::detail
                     const uint32_t m = RegMvolBase + core * RegMvolStride;
                     std::fprintf(stderr,
                                  "[spu2-diag] t=%llus core%u admas=%04X attr=%04X mmix=%04X mvol=%04X/%04X bvol=%04X/%04X "
-                                 "avol=%04X/%04X ring=%u queue=%zu kon=%u voiceSamples=%u unmixed=%u writes=%u voiceWrites=%u\n",
+                                 "avol=%04X/%04X ring=%u queue=%zu kon=%u voiceSamples=%u unmixed=%u writes=%u voiceWrites=%u endx=%06X active=%06X\n",
                                  static_cast<unsigned long long>(samples / 48000u), core, reg(base + RegAdmas),
                                  reg(base + RegAttr), reg(base + RegMmix), reg(m), reg(m + 2u), reg(m + 0x0Cu), reg(m + 0x0Eu),
                                  reg(m + 0x08u), reg(m + 0x0Au), m_input[core].ringCount,
                                  m_input[core].queue.size() - m_input[core].queueRead, g_diagKeyOns[core],
-                                 g_diagVoiceSamples[core], g_diagUnmixedSamples[core], g_diagWrites[core], g_diagVoiceWrites[core]);
+                                 g_diagVoiceSamples[core], g_diagUnmixedSamples[core], g_diagWrites[core], g_diagVoiceWrites[core],
+                                 m_endx[core], [&] { uint32_t a = 0; for (uint32_t i = 0; i < VoicesPerCore; ++i) a |= m_voices[core][i].active ? 1u << i : 0u; return a; }());
                     g_diagKeyOns[core] = g_diagVoiceSamples[core] = g_diagUnmixedSamples[core] = 0u;
                     g_diagWrites[core] = g_diagVoiceWrites[core] = 0u;
                 }

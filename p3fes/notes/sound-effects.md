@@ -1,5 +1,10 @@
 # Sound effects: investigation notes
 
+**Status: fixed.** Menu sound effects key on (SPU2 key-ons on each cursor move, `PS2X_SPU2_DIAG=1`). The last
+cause was the game loading SKHSYNTH.IRX twice: LOADCORE must refuse the second library registration so that copy
+ends in its start routine (otherwise SKSOUND sent the banks to one copy and the sequencer played into the other).
+The notes below are the investigation that led there.
+
 Menu and field sound effects are played by Sony's Sound Kit: EE `sceSkSs*` calls (h_maestro_*) go through libsdr
 (`sceSdRemote`) as SIF RPCs to SDRDRV.IRX (sid 0x80000701, user command 0x90F0), which hands them to SKSOUND, and
 from there to SKHSYNTH/MODHSYN (synthesizer) and SKSESQ/MODSESQ (sound-effect sequencer). Music and voices use a

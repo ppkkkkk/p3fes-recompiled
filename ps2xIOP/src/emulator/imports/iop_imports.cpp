@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include "iop_imports.h"
 
 #include "../core/iop_memory.h"
@@ -123,6 +124,14 @@ namespace ps2x::iop::detail
             if (library.functions.size() > 1024u)
                 return false;
         }
+        // LOADCORE refuses a second library with the same name and version (KE_LIBRARY_FOUND). Modules check that in
+        // their start routine and end there without staying resident: Persona 3 loads SKHSYNTH.IRX twice, and with
+        // both copies running SKSOUND sent the sound banks to the second one while the sequencer (linked to the first)
+        // played into a synthesizer with no bank, so no sound effect was ever keyed on.
+        static const bool allowDuplicates = std::getenv("PS2X_IOP_DUP_LIBS") != nullptr; // old behaviour, A/B tests
+        for (const auto &[address, existing] : m_libraries)
+            if (!allowDuplicates && address != physical && existing.version == library.version && equalsIgnoreCase(existing.name, library.name))
+                return false;
         m_libraries[physical] = std::move(library);
         return true;
     }
