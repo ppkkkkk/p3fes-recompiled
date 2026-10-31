@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$repo = 'poopoocacacacaca/p3fes-recompiled'
+$repo = 'ppkkkkk/p3fes-recompiled'
 $branch = 'dev-builds'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here

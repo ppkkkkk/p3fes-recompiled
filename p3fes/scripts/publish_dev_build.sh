@@ -36,7 +36,7 @@ name=$(git -C "$root" config user.name || true); email=$(git -C "$root" config u
 git -C "$stage" init -q
 git -C "$stage" checkout -q --orphan dev-builds
 git -C "$stage" add -A
-git -C "$stage" -c user.name="${name:-poopoocacacacaca}" -c user.email="${email:-251941704+poopoocacacacaca@users.noreply.github.com}" \
+git -C "$stage" -c user.name="${name:-ppkkkkk}" -c user.email="${email:-251941704+ppkkkkk@users.noreply.github.com}" \
     commit -q -m "Engine build from $(cut -c1-12 "$stage/source.txt")" -m "$notes"
 git -C "$stage" push -q --force "$remote_url" dev-builds:dev-builds
 echo "published dev-builds: ABI $(cat "$stage/abi.txt"), source $(cut -c1-12 "$stage/source.txt")"
