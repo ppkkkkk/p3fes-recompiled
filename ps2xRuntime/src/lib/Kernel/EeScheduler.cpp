@@ -102,6 +102,9 @@ namespace
     constexpr uint64_t kVBlankDurationCycles = microsecondsToEeCycles(500u);
     constexpr uint64_t kAlarmTickCycles = microsecondsToEeCycles(kAlarmTickMicroseconds);
 
+    // EE cycle at which the next VBlankStart is due (kept by the scheduling code below).
+    uint64_t g_nextVBlankStartCycle = 0u;
+
     template <typename Map>
     int allocatePositiveId(int &nextId, const Map &objects)
     {
@@ -196,6 +199,7 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     main.status = EeThreadStatus::Ready;
     m_threads.emplace(main.id, std::move(main));
     m_readyQueues[0].push_back(kMainThreadId);
+    g_nextVBlankStartCycle = m_eeCycle + kVBlankPeriodCycles;
     scheduleEvent(m_eeCycle + kVBlankPeriodCycles,
                   std::chrono::steady_clock::now() + kVBlankPeriod,
                   EeEvent{EeEventType::VBlankStart, 0, 0});
@@ -479,6 +483,38 @@ namespace
     uint64_t g_busyCyclesSum = 0u;
     uint64_t g_busyCyclesMax = 0u;
     uint32_t g_busyFields = 0u;
+
+
+    // Game frame cap: Persona 3 FES counts its main-loop iterations at 0x7CE10C (kwlnUpdate's frame counter). On the
+    // console its logic runs at 30 updates/s; with the generated code's cheaper cycle estimates, lighter scenes finish a
+    // frame within one field and the whole game ran at 60 (twice the speed). When the counter advances less than
+    // PS2X_FRAME_CAP_FIELDS (default 2) fields after its previous advance, the rest of the field is charged as busy
+    // time, as if the frame had overrun it on the console. PS2X_FRAME_CAP_FIELDS=1 turns the cap off;
+    // PS2X_FRAME_COUNTER_ADDR moves the counter (0 = off).
+    struct FrameCap
+    {
+        uint32_t addr = 0u;
+        uint32_t fields = 0u;
+        uint32_t lastCount = 0u;
+        uint64_t lastTick = 0u;
+        bool primed = false;
+    };
+    FrameCap &frameCap()
+    {
+        static FrameCap cap = []
+        {
+            FrameCap c;
+            const char *a = std::getenv("PS2X_FRAME_COUNTER_ADDR");
+            c.addr = a ? static_cast<uint32_t>(std::strtoul(a, nullptr, 0)) : 0x7CE10Cu;
+            const char *f = std::getenv("PS2X_FRAME_CAP_FIELDS");
+            const long n = f ? std::strtol(f, nullptr, 10) : 2;
+            c.fields = static_cast<uint32_t>(n < 1 ? 1 : (n > 6 ? 6 : n));
+            if (c.fields <= 1u || c.addr == 0u || c.addr + 4u > 0x2000000u)
+                c.addr = 0u;
+            return c;
+        }();
+        return cap;
+    }
 }
 
 bool EeScheduler::checkpointDue(uint32_t cycles) noexcept
@@ -496,6 +532,30 @@ bool EeScheduler::checkpointDue(uint32_t cycles) noexcept
     cycles *= cycleScale;
     g_busyCyclesThisField += cycles; // charged by guest code (generated back edges, dispatches)
     accountCycles(cycles);
+
+    FrameCap &cap = frameCap();
+    if (cap.addr != 0u && m_rdram)
+    {
+        uint32_t count;
+        std::memcpy(&count, m_rdram + cap.addr, sizeof(count));
+        if (count != cap.lastCount)
+        {
+            const uint64_t tick = m_vsyncTick;
+            if (cap.primed && count == cap.lastCount + 1u && tick - cap.lastTick < cap.fields &&
+                g_nextVBlankStartCycle > m_eeCycle)
+            {
+                // Finish this field idle (as if the frame had overrun it); the vblank wait then lands one field later.
+                accountCycles(static_cast<uint32_t>(std::min<uint64_t>(g_nextVBlankStartCycle - m_eeCycle, 0xFFFFFFFFu)));
+                cap.lastTick = tick + 1u;
+            }
+            else
+            {
+                cap.lastTick = tick;
+            }
+            cap.lastCount = count;
+            cap.primed = true;
+        }
+    }
 
     if (m_checkpointPending.load(std::memory_order_acquire) ||
         m_stopRequested.load(std::memory_order_acquire))
@@ -2123,6 +2183,7 @@ void EeScheduler::processDueDeadlines()
                 scheduleEvent(scheduled.deadlineCycle + kVBlankDurationCycles,
                               hostBase + kVBlankDuration,
                               EeEvent{EeEventType::VBlankEnd, 0, m_vsyncTick + 1u});
+                g_nextVBlankStartCycle = scheduled.deadlineCycle + kVBlankPeriodCycles;
                 scheduleEvent(scheduled.deadlineCycle + kVBlankPeriodCycles,
                               hostBase + kVBlankPeriod,
                               EeEvent{EeEventType::VBlankStart, 0, 0});

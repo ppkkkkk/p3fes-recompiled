@@ -148,6 +148,7 @@ See [`p3fes/README.md`](p3fes/README.md). In short:
 | `PS2X_VU1=interp` | Built-in VU1 interpreter instead of PCSX2's microVU recompiler |
 | `PS2X_EE_CYCLE_SCALE=4` | Multiplier on the EE time charged by the recompiled code (1 = unscaled; 4 gives the console's 30 fps in 3D) |
 | `PS2X_SHOW_SPEED=0` | Hide the game FPS / VPS readout in the window title |
+| `PS2X_FRAME_CAP_FIELDS=1` | Let the game logic run at 60 updates per second (default 2: 30, like the console) |
 | `PS2X_AUDIO_STRETCH=0` | Play the sound unstretched when the game runs below full speed (it runs dry instead) |
 | `PS2X_GS_GPU=1` | Built-in OpenGL GS backend instead of the CPU rasterizer |
 | `PS2X_GS_THREAD=1` | Run the GS backend on its own thread |
