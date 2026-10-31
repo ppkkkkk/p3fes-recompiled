@@ -690,6 +690,41 @@ namespace ps2_stubs
             }
         }
 
+        // Debug aid: PS2X_SIFDMA_DUMP=<hex IOP address>: when a transfer to that address carries new contents, print
+        // the source, size, non-zero byte count and the first 64 bytes (at most 300 times).
+        static const uint32_t sifDmaDump = []
+        {
+            const char *v = std::getenv("PS2X_SIFDMA_DUMP");
+            return v ? static_cast<uint32_t>(std::strtoul(v, nullptr, 16)) : 0xFFFFFFFFu;
+        }();
+        if (sifDmaDump != 0xFFFFFFFFu)
+        {
+            static std::vector<uint8_t> last;
+            static int printed = 0;
+            for (uint32_t i = 0; i < count && printed < 300; ++i)
+            {
+                Ps2SifDmaTransfer x{};
+                if (const uint8_t *e = getConstMemPtr(rdram, dmatAddr + i * static_cast<uint32_t>(sizeof(x))))
+                    std::memcpy(&x, e, sizeof(x));
+                if (x.dest != sifDmaDump || x.size <= 0 || !canAccessEeRange(rdram, x.src, static_cast<uint32_t>(x.size)))
+                    continue;
+                const uint8_t *data = getConstMemPtr(rdram, x.src);
+                std::vector<uint8_t> now(data, data + x.size);
+                if (now == last)
+                    continue;
+                last = now;
+                ++printed;
+                size_t nonzero = 0;
+                for (uint8_t b : now)
+                    nonzero += b != 0;
+                std::fprintf(stderr, "[sifdma-dump] src=%08x size=%d nonzero=%zu ra=%08x :", x.src, x.size, nonzero,
+                             getRegU32(ctx, 31));
+                for (size_t k = 0; k < now.size() && k < 64; ++k)
+                    std::fprintf(stderr, "%s%02x", (k % 4) ? "" : " ", now[k]);
+                std::fprintf(stderr, "\n");
+            }
+        }
+
         std::array<Ps2SifDmaTransfer, 32u> pending{};
         uint32_t pendingCount = 0u;
         bool ok = true;

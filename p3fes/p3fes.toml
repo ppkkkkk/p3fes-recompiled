@@ -19,9 +19,15 @@ patch_syscalls = false
 patch_cop0 = true
 patch_cache = true
 
-# libmpeg/libipu run as guest code on the emulated IPU (Sofdec drives the IPU
+# libmpeg/libipu also run as guest code on the emulated IPU (Sofdec drives the IPU
 # itself, so the runtime's FFmpeg-based sceMpeg HLE must not replace them).
 keep_guest = [
+  # libsdr (EE side of the SDR sound driver) talks to the real SDRDRV.IRX on the emulated IOP. Its HLE versions
+  # answered locally, so the Sound Kit (sceSkSs*: menu and field sound effects through SKSOUND/SKHSYNTH/SKSESQ) never
+  # reached the IOP and the game had no sound effects.
+  "sceSdRemoteInit",
+  "sceSdTransToIOP",
+  "sceSdRemote",
   "sceIpuInit",
   "sceIpuRestartDMA",
   "sceIpuStopDMA",
@@ -195,9 +201,6 @@ stubs = [
   "scePadGetSlotMax@0x005125D8",
   "scePadGetModVersion@0x00512640",
   "scePadSetWarningLevel@0x005126A8",
-  "sceSdRemoteInit@0x00512868",
-  "sceSdTransToIOP@0x00512918",
-  "sceSdRemote@0x005129C0",
   "_calloc_r@0x0051E178",
   "exit@0x0051F6A0",
   "fflush@0x0051F728",
