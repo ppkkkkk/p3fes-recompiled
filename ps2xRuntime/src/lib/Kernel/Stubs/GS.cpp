@@ -1042,13 +1042,6 @@ namespace ps2_stubs
             env.bgcolor = 0u;
             std::memcpy(ptr, &env, sizeof(env));
         }
-        static bool logged = false;
-        if (!logged)
-        {
-            logged = true;
-            std::fprintf(stderr, "[gs] sceGsSetDefDispEnv w=%u h=%u dx=%u dy=%u psm=%u interlace=%u omode=%u ffmode=%u\n", w, h, dx,
-                         dy, psm, g_gparam.interlace, g_gparam.omode, g_gparam.ffmode);
-        }
         setReturnS32(ctx, 0);
     }
 
@@ -1313,20 +1306,6 @@ namespace ps2_stubs
 
     void sceGsSyncV(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        // Debug aid: PS2X_SYNCV_LOG=1 prints, every 300 calls, the vsync tick and the caller (frame pacing checks).
-        static const bool syncvLog = std::getenv("PS2X_SYNCV_LOG") != nullptr;
-        if (syncvLog)
-        {
-            static uint64_t calls = 0;
-            static uint64_t lastTick = 0;
-            const uint64_t tick = runtime->eeScheduler().currentVSyncTick();
-            if (++calls % 300u == 0u)
-            {
-                std::fprintf(stderr, "[syncv] call %llu tick %llu (+%llu since last report) ra=%08x\n", (unsigned long long)calls,
-                             (unsigned long long)tick, (unsigned long long)(tick - lastTick), getRegU32(ctx, 31));
-                lastTick = tick;
-            }
-        }
         ps2_syscalls::WaitVSyncTick(rdram,
                                     ctx,
                                     runtime,

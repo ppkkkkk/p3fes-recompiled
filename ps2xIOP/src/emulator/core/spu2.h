@@ -79,7 +79,7 @@ namespace ps2x::iop::detail
         struct VoiceState
         {
             bool active = false;
-            uint32_t nax = 0;          // siguiente bloque ADPCM (medias palabras)
+            uint32_t nax = 0;          // next ADPCM block (halfwords)
             uint32_t lsa = 0;          // inicio del bucle
             bool lsaFromRegister = false;
             uint32_t pitchCounter = 0; // 4.12

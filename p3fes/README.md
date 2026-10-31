@@ -27,16 +27,11 @@ own disc and are generated locally.
    `PS2X_ENABLE_LTO=OFF`).
 5. Put `ps2EntryRunner.exe`, `run.bat`, `SLUS_216.21`, `SYSTEM.CNF`, `LIB31\` and
    the `.CVM` files from your disc in one folder and run `run.bat`.
-6. Optional, about 3x faster 3D: run once with `PS2X_VU1_CAPTURE=<folder>` through the scenes you
-   want, then reconfigure with `-DPS2X_VU1_MICROCODE_DIR=<folder>` and
-   `-DPS2X_VU1_GENERATOR_SOURCE=p3fes/tools/vu1/generar_vu1.cpp` and rebuild. The VU1 microcode is
-   compiled to C++ and linked in; microcode that wasn't captured is still interpreted. The captured
-   micromemories and the generated C++ are game data: keep them out of the repository.
 
 ## Engine updates
 
 The runtime is a shared library (`ps2runtime.dll` / `libps2_runtime.so`, CMake option `PS2X_SHARED_RUNTIME`, on by
-default on desktop). The executable only holds the recompiled code, the compiled VU1 microcode and a small `main`
+default on desktop). The executable only holds the recompiled code and a small `main`
 (`ps2xRuntime/src/game_main.cpp`) that hands the function table to the runtime. Fixes to the runtime therefore ship
 as a new library without rebuilding the recompiled code.
 

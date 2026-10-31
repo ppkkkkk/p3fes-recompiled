@@ -9,7 +9,7 @@ namespace ps2x::iop::detail
     namespace
     {
         constexpr int32_t kAdpcmFilters[5][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
-        constexpr size_t kMaxBufferedFrames = 48000u * 2u; // 2 s; si nadie consume, se descarta lo mas antiguo
+        constexpr size_t kMaxBufferedFrames = 48000u * 2u; // 2 s; with no consumer the oldest samples are dropped
 
         int16_t clamp16(int32_t value) noexcept
         {
@@ -24,6 +24,17 @@ namespace ps2x::iop::detail
                 return static_cast<int16_t>(value << 1u) >> 1; // -0x4000..0x3FFF
             return (value & 0x2000u) != 0u ? 0 : 0x3FFF;
         }
+    }
+
+    namespace
+    {
+        // PS2X_SPU2_DIAG counters, per core, since the last diag line: voices keyed on, voice samples produced, and
+        // voice samples dropped because the voice's VMIX bit is off on both sides.
+        uint32_t g_diagKeyOns[2] = {};
+        uint32_t g_diagVoiceSamples[2] = {};
+        uint32_t g_diagUnmixedSamples[2] = {};
+        uint32_t g_diagWrites[2] = {};      // register writes
+        uint32_t g_diagVoiceWrites[2] = {}; // writes to the per-voice parameter / address blocks
     }
 
     Spu2::Spu2() : m_ram(RamHalfwords)
@@ -125,12 +136,6 @@ namespace ps2x::iop::detail
                 return static_cast<uint16_t>(m_endx[core] >> 16u);
         }
         return reg(offset);
-    }
-
-    namespace
-    {
-        extern uint32_t g_diagWrites[2];
-        extern uint32_t g_diagVoiceWrites[2];
     }
 
     void Spu2::write16(uint32_t physical, uint16_t value)
@@ -258,16 +263,6 @@ namespace ps2x::iop::detail
         reg(core * 0x400u + RegStatx) |= StatxDmaReady;
     }
 
-    namespace
-    {
-        // PS2X_SPU2_DIAG counters, per core, since the last diag line: voices keyed on, voice samples produced, and
-        // voice samples dropped because the voice's VMIX bit is off on both sides.
-        uint32_t g_diagKeyOns[2] = {};
-        uint32_t g_diagVoiceSamples[2] = {};
-        uint32_t g_diagUnmixedSamples[2] = {};
-        uint32_t g_diagWrites[2] = {};      // register writes
-        uint32_t g_diagVoiceWrites[2] = {}; // writes to the per-voice parameter / address blocks
-    }
 
     void Spu2::keyOn(uint32_t core, uint32_t mask, uint32_t firstVoice)
     {

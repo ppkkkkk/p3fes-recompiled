@@ -31,28 +31,26 @@ The game's MIPS R5900 code is statically recompiled to C++ and run on a reimplem
 
 <sub>Generated from <a href="p3fes/status/status.toml"><code>p3fes/status/status.toml</code></a> by <code>p3fes/scripts/status_chart.py</code>. 🟩 working · 🟦 partial · 🟥 pending.</sub>
 
-**Where it stands:** the game boots from its own CVM archives, detects the memory card and controller, plays the opening movie with sound through PCSX2's GS, and reaches the title screen and the *The Journey* / *The Answer* menu. **New Game works:** the FES introduction, the data
-transfer prompt, the opening anime, the contract and name entry, and the first 3D scene in the dorm with Mitsuru and Yukari,
-all rendered correctly, then the dorm tour and free movement at school. Menus and movies run at about full speed; with
-VU1 microcode compiled ahead of time, 3D scenes run about 3x faster than interpreted but still below full speed on the
-2-core test VM. Next up: the first Dark Hour, and more speed.
+**Where it stands:** the game boots from its own CVM archives, plays the opening movie, and goes through New Game (the
+FES introduction, the opening anime, name entry) into the story: the dorm, school, day changes and Tartarus, loaded
+from a memory card save. 3D runs at the console's 30 fps with VU1 on PCSX2's microVU recompiler; menus run at 60.
+Music and voices play; sound effects are still silent, and battles have not been tested yet.
 
 | Milestone | |
 |---|:---:|
-| Recompile all 14,628 functions of `SLUS_216.21` | ✅ |
+| Recompile all 14,640 functions of `SLUS_216.21` | ✅ |
 | Boot: EE kernel, original IRX modules, CVM archives | ✅ |
-| Memory card (8 MB `.ps2`) and controller | ✅ |
-| Opening movie: video (IPU) and audio (ADX over SPU2 AutoDMA) | ✅ |
+| Memory card (8 MB `.ps2`, PCSX2 format) and controller | ✅ |
+| Movies: video (IPU) and audio (ADX over SPU2 AutoDMA) | ✅ |
 | PCSX2 GS renderer (OpenGL / software) | ✅ |
-| Movies at full speed | 🔧 |
-| Title screen | ✅ |
-| Main menu (*The Journey* / *The Answer*) | ✅ |
+| Title screen and main menu (*The Journey* / *The Answer*) | ✅ |
 | New Game: introduction, opening anime, name entry | ✅ |
-| First 3D scene (dorm) renders correctly | ✅ |
-| Compiled VU1 microcode (about 3x faster 3D) | ✅ |
-| Free movement (school, dorm) | ✅ |
-| 3D scenes at full speed | 🔧 |
-| Field, Tartarus, battles, events | ⏳ |
+| Story scenes, free movement, day changes | ✅ |
+| VU1 on PCSX2's microVU recompiler | ✅ |
+| 3D at 30 fps, menus at 60 (console frame pacing) | ✅ |
+| Tartarus | 🔧 |
+| Sound effects (SPU2 voices) | 🔧 |
+| Battles | ⏳ |
 | Widescreen, upscaling, 60 FPS | ⏳ |
 
 ## Goal
@@ -64,7 +62,7 @@ to add widescreen, higher internal resolution and 60 FPS with frame interpolatio
 ## How it works
 
 ```
-SLUS_216.21 ──► function map (14,628) ──► ps2_recomp ──► C++ (one file per function)
+SLUS_216.21 ──► function map (14,640) ──► ps2_recomp ──► C++ (one file per function)
                                                                │
    ps2xRuntime  EE kernel HLE · DMAC · GIF/GS · VIF1/VU1 · IPU ─┼─► native executable
    ps2xIOP      R3000A interpreter running the game's own IRX · SPU2 · SIO2
@@ -80,7 +78,7 @@ C++ calls. Indirect jumps go through a dispatcher that maps a guest PC to a comp
 
 | | |
 |---|---|
-| Functions recompiled | 14,423 |
+| Functions recompiled | 14,435 |
 | Bound to runtime HLE | 205 (EE kernel, SIF, CD, pad, memory card libraries) |
 | Kept as guest code | Sony `libmpeg` / `libipu`, so the game's MPEG player runs on the emulated IPU |
 | Indirect-jump fallback entries | 3,910 functions (453,264 entries) |
@@ -94,8 +92,8 @@ C++ calls. Indirect jumps go through a dispatcher that maps a guest PC to a comp
 - **EE kernel (HLE):** threads, semaphores, event flags, alarms, interrupt handlers and VBlank/HBlank timing.
 - **DMAC:** all channels, including scratchpad chain and interleave modes, which Sofdec's motion compensation uses.
 - **IPU:** the MPEG-1/2 decoder adapted from PCSX2.
-- **GS:** a CPU rasterizer and an OpenGL backend with an optional render thread. PCSX2's GS is being integrated as a
-  shared library (`third_party/pcsx2-gs`) fed through an observer on the GIF stream.
+- **GS:** PCSX2's GS (`third_party/pcsx2-gs`, OpenGL or software renderer), fed through an observer on the GIF stream;
+  the original CPU rasterizer and OpenGL backend remain as fallbacks (`PS2X_GS_RENDERER=builtin`).
 - **VIF1/VU1:** VU1 microcode runs on PCSX2's microVU recompiler (`third_party/kzvu`); `PS2X_VU1=interp` selects the
   built-in interpreter.
 - **IOP:** the game's original IRX modules (`SIO2MAN`, `PADMAN`, `MC2_S1`, `LIBSD`, `CRI_ADXI`, `SKSOUND`, …) run on an
@@ -123,6 +121,8 @@ ps2xRuntime/           EE runtime: kernel, DMAC, GS, VIF/VU, IPU, input, host wi
 ps2xIOP/               IOP: R3000A interpreter, HLE kernel and libraries, SPU2, SIO2
 third_party/pcsx2/     Subset of PCSX2 at 2954ebe (GS, common, libraries)
 third_party/pcsx2-gs/  PCSX2's GS as a shared library with a C API
+third_party/kzvu/      PCSX2's microVU (VU1 recompiler) as a library, from KillzoneRecomp
+third_party/pcsx2-vu/  Subset of PCSX2 at 646df006a used by kzvu
 ```
 
 </details>
@@ -145,6 +145,9 @@ See [`p3fes/README.md`](p3fes/README.md). In short:
 | `PS2X_GS_RENDERER=pcsx2` (default) / `pcsx2-sw` / `builtin` | PCSX2's GS with the OpenGL or software renderer (`pcsx2gs.so`/`.dll` next to the executable), or the built-in rasterizer |
 | `PS2X_PCSX2_SCALE=2` | PCSX2 internal resolution multiplier |
 | `PS2X_PCSX2_OPTIONS=` | PCSX2 image options, `key=value;…` (see `third_party/pcsx2-gs/include/pcsx2gs_api.h`) |
+| `PS2X_VU1=interp` | Built-in VU1 interpreter instead of PCSX2's microVU recompiler |
+| `PS2X_EE_CYCLE_SCALE=4` | Multiplier on the EE time charged by the recompiled code (1 = unscaled; 4 gives the console's 30 fps in 3D) |
+| `PS2X_SHOW_SPEED=0` | Hide the game FPS / VPS readout in the window title |
 | `PS2X_GS_GPU=1` | Built-in OpenGL GS backend instead of the CPU rasterizer |
 | `PS2X_GS_THREAD=1` | Run the GS backend on its own thread |
 | `PS2X_MEMCARD1=<path>` / `none` | Memory card for slot 1 (default `memcards/Mcd001.ps2`) |
@@ -155,7 +158,8 @@ See [`p3fes/README.md`](p3fes/README.md). In short:
 | `PS2X_PROFILE=<file>` | Linux sampling profiler; summarise with `p3fes/scripts/prof_report.py` |
 
 Debug traces: `PS2X_SPU2_DIAG`, `PS2X_GS_DIAG`, `PS2X_IPU_TRACE`, `PS2X_DMA_LOG`, `PS2X_CD_LOG`, `PS2X_IOP_CD_LOG`,
-`PS2X_EE_TRACE_CALLS`, `PS2X_LOG_SUSPEND`.
+`PS2X_RPC_LOG`, `PS2X_IOP_RPC_COUNTS`, `PS2X_IOP_TRACE`, `PS2X_EE_CYCLE_STATS`, `PS2X_GIF_TRACE`, `PS2X_PCSX2_SHOTS`,
+`PS2X_PAD_SCRIPT` (with `PS2X_PAD_SCRIPT_CLOCK=fields`), `PS2X_EE_TRACE_CALLS`, `PS2X_LOG_SUSPEND`.
 
 </details>
 
@@ -163,8 +167,8 @@ Debug traces: `PS2X_SPU2_DIAG`, `PS2X_GS_DIAG`, `PS2X_IPU_TRACE`, `PS2X_DMA_LOG`
 
 - Logo lettering: [Faktos](https://maylett.net/cmd/faktos.html) and [BM Space](https://www.dafont.com/bm-space.font) (free font).
 - [PS2Recomp](https://github.com/ran-j/PS2Recomp) by ran-j and contributors: the recompiler and runtime this port is built on.
-- [god-of-war-recomp](https://github.com/KIexster/god-of-war-recomp) by KIexster: SPU2, SIO2, IOP and VU1 work, the VU1
-  microcode compiler (`p3fes/tools/vu1/generar_vu1.cpp`) and many EE/GS fixes, merged here, plus the status map design.
+- [god-of-war-recomp](https://github.com/KIexster/god-of-war-recomp) by KIexster: SPU2, SIO2, IOP and VU1 work and many
+  EE/GS fixes, merged here, plus the status map design.
 - Taylor N. Albarnaz / LightVelox's Shadow of the Colossus fork of PS2Recomp: the OpenGL GS backend (via god-of-war-recomp).
 - [urban-reign-recomp](https://github.com/thiagordsfx/urban-reign-recomp) by thiagordsfx: the PCSX2 GS bridge design.
 - [PCSX2](https://github.com/PCSX2/pcsx2): the IPU, the GS and microVU (VU1 recompiler), and the accuracy reference.

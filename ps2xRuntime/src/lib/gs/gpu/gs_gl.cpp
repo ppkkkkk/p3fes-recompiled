@@ -151,10 +151,10 @@ namespace GSSharedPresent
         if (!Active())
             return false;
         std::lock_guard<std::mutex> lock(s_sharedMutex);
-        // GOW-Port: los cuadros se muestran en orden (el siguiente aún no mostrado), no siempre el más reciente: con el
-        // ritmo irregular del juego (cuadros de 10 a 22 ms) dos cuadros podían caer en un mismo refresco de la ventana y
-        // el primero no se veía nunca (60 cuadros del juego, 44 imágenes en pantalla). Solo se salta al más reciente si
-        // hay 3 o más pendientes, para no acumular retraso. PS2X_GS_PRESENT_LATEST=1: siempre el más reciente.
+        // From the God of War port: frames are shown in order (the next one not yet shown), not always the newest. With
+        // an irregular frame pace (10 to 22 ms) two frames could land in the same window refresh and the first was never
+        // seen (60 game frames, 44 images on screen). It only skips to the newest when 3 or more are pending, so latency
+        // does not build up. PS2X_GS_PRESENT_LATEST=1: always the newest.
         static const bool latestOnly = [] { const char *v = std::getenv("PS2X_GS_PRESENT_LATEST"); return v && v[0] == '1'; }();
         const uint64_t shown = s_readingSlot >= 0 ? s_sharedSlots[s_readingSlot].frame.sequence : 0u;
         int newest = -1, oldest = -1, pending = 0;

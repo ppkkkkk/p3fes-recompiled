@@ -44,7 +44,7 @@ namespace ps2x::iop::detail
         if (m_loaded)
             return;
         m_loaded = true;
-        m_image.assign(ImageSize, 0xFFu); // sin formatear
+        m_image.assign(ImageSize, 0xFFu); // unformatted
         if (m_path.empty())
             return;
         std::ifstream file(m_path, std::ios::binary);
@@ -75,7 +75,7 @@ namespace ps2x::iop::detail
             }
             file.write(reinterpret_cast<const char *>(m_image.data()), static_cast<std::streamsize>(m_image.size()));
             m_fileExists = static_cast<bool>(file);
-            std::cerr << "[SIO2] memory card creada en " << m_path << std::endl;
+            std::cerr << "[SIO2] memory card created at " << m_path << std::endl;
             return;
         }
         if (!m_file)
@@ -396,8 +396,8 @@ namespace ps2x::iop::detail
 
         switch (command)
         {
-        case 0x11u: // sondeo
-        case 0x12u: // fin de escritura/borrado
+        case 0x11u: // probe
+        case 0x12u: // end of write/erase
         case 0x81u: // end of read/write
             terminator(4u);
             break;
@@ -427,13 +427,13 @@ namespace ps2x::iop::detail
             m_out.push_back(card.terminator);
             break;
         }
-        case 0x27u: // fijar terminador
+        case 0x27u: // set terminator
             card.terminator = popIn();
             m_out.push_back(0x00u);
             m_out.push_back(0x2Bu);
             m_out.push_back(card.terminator);
             break;
-        case 0x28u: // leer terminador
+        case 0x28u: // read terminator
             m_out.push_back(0x2Bu);
             m_out.push_back(card.terminator);
             m_out.push_back(card.terminator);
@@ -481,7 +481,7 @@ namespace ps2x::iop::detail
         case 0xF7u:
             terminator(5u);
             break;
-        case 0xF3u: // reinicio de la autenticacion
+        case 0xF3u: // reset authentication
             card.terminator = 0x55u;
             terminator(5u);
             break;

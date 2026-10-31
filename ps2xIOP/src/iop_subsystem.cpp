@@ -199,8 +199,8 @@ namespace ps2x::iop
 
     RpcResult IopSubsystem::handleRpc(const RpcRequest &request)
     {
-        // Debug aid: PS2X_RPC_LOG=1 prints, every 2000 calls, how many RPC calls each server id / function got.
-        static const bool rpcLog = std::getenv("PS2X_RPC_LOG") != nullptr;
+        // Debug aid: PS2X_IOP_RPC_COUNTS=1 prints, every 2000 calls, how many RPC calls each server id / function got.
+        static const bool rpcLog = std::getenv("PS2X_IOP_RPC_COUNTS") != nullptr;
         if (rpcLog)
         {
             static std::map<std::pair<uint32_t, uint32_t>, uint32_t> counts;

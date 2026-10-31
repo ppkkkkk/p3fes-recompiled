@@ -3,12 +3,12 @@
 #
 # States: "done" (working), "partial" (works with gaps, or unverified), "todo" (not reached / not emulated).
 
-updated = "2026-10-21"
+updated = "2026-10-31"
 
 # EE code of SLUS_216.21 (from ps2_recomp's summary)
 [code]
-functions = 14628
-recompiled = 14423     # translated to C++
+functions = 14640
+recompiled = 14435     # translated to C++
 hle = 205              # bound to runtime implementations (kernel, SIF, CD, pad, memory card libraries)
 
 # snaku/Persona3-FES-Decompilation (a separate, readable-C decompilation; not used by the build)
@@ -17,7 +17,7 @@ functions_in_c = 986   # C function definitions in its src/ at 59d284e (2026-09-
 commit = "59d284e"
 
 # ---------------------------------------------------------------------------------------------------------------
-# Panel 1: the executable's 14,628 functions (p3fes/p3fes_map.csv), grouped by the library or game module they
+# Panel 1: the executable's 14,640 functions (p3fes/p3fes_map.csv), grouped by the library or game module they
 # belong to (names from the snaku decompilation). The first `match` regex that fits a name wins; named functions
 # that match nothing join the group of the function before them (the linker keeps each library contiguous), and
 # unnamed ones fall into the last group. The state says whether the port has exercised that code at run time.
@@ -121,7 +121,7 @@ items = [
 group = "GS / VU"
 items = [
   { name = "GS", weight = 5, state = "partial" },
-  { name = "VIF1/VU1", weight = 4, state = "partial" },
+  { name = "VIF1/VU1", weight = 4, state = "done" },
   { name = "IPU", weight = 2.5, state = "done" },
   { name = "GIF", weight = 2, state = "done" },
   { name = "Tex/CLUT", weight = 1.5, state = "partial" },
@@ -145,11 +145,11 @@ done = 1.0
 [[phase]]
 name = "Movies"
 weight = 10
-done = 0.85
+done = 1.0
 [[phase]]
 name = "Renderer"
 weight = 15
-done = 0.65
+done = 0.75
 [[phase]]
 name = "Title"
 weight = 10
@@ -157,7 +157,7 @@ done = 1.0
 [[phase]]
 name = "Field / Tartarus"
 weight = 15
-done = 0.2
+done = 0.35
 [[phase]]
 name = "Battles"
 weight = 10
@@ -165,7 +165,7 @@ done = 0.0
 [[phase]]
 name = "Story"
 weight = 10
-done = 0.05
+done = 0.15
 [[phase]]
 name = "Playthrough"
 weight = 5

@@ -637,7 +637,7 @@ if(PS2X_VU1_MICROCODE_DIR AND PS2X_VU1_GENERATOR_SOURCE AND NOT PS2X_IS_ANDROID 
             set_source_files_properties(${PS2X_VU1_GENERATED_PARTS} PROPERTIES COMPILE_OPTIONS "/bigobj")
         endif()
         list(LENGTH PS2X_VU1_IMAGES PS2X_VU1_IMAGE_COUNT)
-        message(STATUS "VU1 compilada: ${PS2X_VU1_IMAGE_COUNT} micromemorias en ${PS2X_VU1_MICROCODE_DIR}")
+        message(STATUS "Compiled VU1: ${PS2X_VU1_IMAGE_COUNT} micromemory images in ${PS2X_VU1_MICROCODE_DIR}")
     endif()
 endif()
 
