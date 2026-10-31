@@ -74,6 +74,19 @@ namespace ps2x::iop::detail
 
         [[nodiscard]] size_t threadCount() const noexcept { return m_threads.size(); }
         // some thread is ready to run (IopRpcBridge checks after each RPC).
+        // priority of the running thread (0 = none running)
+        [[nodiscard]] uint32_t currentThreadPriority() const noexcept
+        {
+            return m_currentThread ? m_currentThread->priority : 0u;
+        }
+        // some thread with a better (lower) priority value than `priority` is ready to run
+        [[nodiscard]] bool hasReadyThreadAbove(uint32_t priority) const noexcept
+        {
+            for (const auto &[id, thread] : m_threads)
+                if (thread.state == IopThreadState::Ready && thread.priority < priority)
+                    return true;
+            return false;
+        }
         [[nodiscard]] bool hasReadyThread() const noexcept
         {
             for (const auto &[id, thread] : m_threads)

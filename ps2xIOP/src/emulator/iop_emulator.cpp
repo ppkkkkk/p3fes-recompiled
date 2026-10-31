@@ -570,14 +570,20 @@ namespace ps2x::iop::detail
             return cpu.gpr[2];
         }
 
-        void runReadyThreads(uint64_t maxCycles) override
+        void runReadyThreads(uint64_t maxCycles, uint32_t serverPriority) override
         {
             // Only from outside IOP execution (an RPC from the EE), and without re-entering.
             if (activeCpu != nullptr || settlingThreads)
                 return;
             settlingThreads = true;
             const uint64_t start = totalCycles;
-            while (kernel.hasReadyThread() && totalCycles - start < maxCycles)
+            // Settle while a thread that would preempt the RPC server's thread is ready (the real IOP runs those before
+            // the reply). Lower-priority threads wait: Persona 3's sound modules keep one ready at low priority, and
+            // with "any ready thread" the IOP ran the full 4 M-cycle cap after each of the Sound Kit's ~18 RPCs a
+            // frame, with the EE stopped (the game crawled at a few fields per second).
+            static const bool settleAll = std::getenv("PS2X_IOP_SETTLE_ALL") != nullptr; // the old rule, for A/B tests
+            while ((serverPriority != 0u && !settleAll ? kernel.hasReadyThreadAbove(serverPriority) : kernel.hasReadyThread()) &&
+                   totalCycles - start < maxCycles)
                 runCycles(kDefaultSlice * 16u);
             settlingThreads = false;
         }

@@ -14,6 +14,7 @@
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
+#include <vector>
 
 
 namespace
@@ -2130,6 +2131,23 @@ void EeScheduler::processDueDeadlines()
         {
             std::unique_lock lock(m_eventMutex);
             const auto now = std::chrono::steady_clock::now();
+            // Debug aid: PS2X_DEADLINE_LOG=1 lists the pending scheduler deadlines every 2 s.
+            static const bool deadlineLog = std::getenv("PS2X_DEADLINE_LOG") != nullptr;
+            if (deadlineLog)
+            {
+                static auto lastLog = now;
+                if (now - lastLog > std::chrono::seconds(2))
+                {
+                    lastLog = now;
+                    std::fprintf(stderr, "[deadlines] cycle=%llu vsync=%llu events=%zu:", (unsigned long long)m_eeCycle,
+                                 (unsigned long long)m_vsyncTick, m_events.size());
+                    for (const ScheduledEvent &item : m_deadlines)
+                        std::fprintf(stderr, " t%d@%+lld/%+lldms", (int)item.event.type,
+                                     (long long)item.deadlineCycle - (long long)m_eeCycle,
+                                     (long long)std::chrono::duration_cast<std::chrono::milliseconds>(item.hostDeadline - now).count());
+                    std::fprintf(stderr, "\n");
+                }
+            }
             for (const ScheduledEvent &item : m_deadlines)
             {
                 if (item.deadlineCycle <= m_eeCycle &&
@@ -2272,6 +2290,17 @@ void EeScheduler::processEvent(const EeEvent &event)
                     std::fprintf(stderr, "[ram-dump] field %llu -> %s\n", (unsigned long long)m_vsyncTick,
                                  ramDump.second.c_str());
                 }
+            }
+            // ... and the 2 MB of IOP RAM to <path>.iop
+            if (ramDump.first != 0u && m_vsyncTick == ramDump.first)
+            {
+                std::vector<uint8_t> iop(0x200000u);
+                if (m_runtime.readIopMemory(0u, iop.data(), iop.size()))
+                    if (std::FILE *f = std::fopen((ramDump.second + ".iop").c_str(), "wb"))
+                    {
+                        std::fwrite(iop.data(), 1, iop.size(), f);
+                        std::fclose(f);
+                    }
             }
         }
         writeGuestU32(m_vsyncFlagAddress, 1u);

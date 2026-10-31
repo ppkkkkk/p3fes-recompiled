@@ -169,10 +169,22 @@ namespace ps2x::iop::detail
         case 10:
         case 11:
         case 14: // InitRpc
-        case 15:
-        case 16:
+        case 16: // sceSifCallRpc (IOP to EE): not delivered
             setV0(0);
             return true;
+        case 15: // sceSifBindRpc(client, sid, mode) to an EE server
+        {
+            // Mark the client bound (client->server, offset 0x24, non-zero). IOP drivers wait for that in a loop: the
+            // SDR driver's callback thread (SDRDRV.IRX, bound to the EE's sid 0x80000704) spun there forever, ready at
+            // all times, and every EE RPC then let the IOP run its full settle budget (4 M cycles) behind it.
+            const uint32_t client = cpu.gpr[4];
+            if (client != 0u && m_memory.ownsRamRange(client, 0x28u))
+            {
+                m_memory.write32(client + 0x24u, 0x80000000u | (cpu.gpr[5] & 0xFFFFu));
+            }
+            setV0(0);
+            return true;
+        }
         case 12: // sceSifSendCmd
         case 13: // isceSifSendCmd
         {
@@ -241,6 +253,7 @@ namespace ps2x::iop::detail
             server.callback = m_memory.read32(stackPointer + 16u);
             server.callbackBuffer = m_memory.read32(stackPointer + 20u);
             server.queue = m_memory.read32(stackPointer + 24u);
+            server.priority = m_kernel.currentThreadPriority();
             m_servers[server.sid] = server;
             if (server.serverData != 0u)
             {
@@ -346,7 +359,12 @@ namespace ps2x::iop::detail
         // On a real IOP, if the server wakes a higher-priority thread (e.g. a reader thread), that thread runs
         // before the RPC thread replies. Without this, the reader took the destination of the next request and the
         // data ended up in the wrong buffer.
-        executor.runReadyThreads(kRpcSettleCycles);
+        static const uint64_t settle = []
+        {
+            const char *v = std::getenv("PS2X_IOP_RPC_SETTLE");
+            return v ? static_cast<uint64_t>(std::strtoull(v, nullptr, 10)) : kRpcSettleCycles;
+        }();
+        executor.runReadyThreads(settle, server.priority);
         if (returnPointer == 0u)
             returnPointer = server.buffer;
         if (request.receive.address != 0u && request.receive.size != 0u && returnPointer != 0u)

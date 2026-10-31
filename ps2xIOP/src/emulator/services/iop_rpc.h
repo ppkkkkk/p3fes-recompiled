@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 #include <unordered_map>
 
 namespace ps2x::iop
@@ -40,9 +41,12 @@ namespace ps2x::iop::detail
         }
         // Lets the ready IOP threads run (e.g. ones woken by an RPC server), as the real IOP's priority
         // preemption would before the RPC thread replies.
-        virtual void runReadyThreads(uint64_t maxCycles)
+        // serverPriority: priority of the thread that runs the RPC server (0 = unknown). Only threads that would
+        // preempt it (better priority) keep the settling going.
+        virtual void runReadyThreads(uint64_t maxCycles, uint32_t serverPriority = 0u)
         {
             (void)maxCycles;
+            (void)serverPriority;
         }
     };
 
@@ -87,6 +91,7 @@ namespace ps2x::iop::detail
             uint32_t callback = 0;
             uint32_t callbackBuffer = 0;
             uint32_t queue = 0;
+            uint32_t priority = 0; // of the thread that registered it (its sceSifRpcLoop thread)
         };
 
         IopHost &m_host;
