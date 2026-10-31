@@ -1,0 +1,1 @@
+Sound effects: the menus and the field now have their sound effects (needs the new game exe P3FES-exe-sfx.zip). IOP fixes for the sound driver.
