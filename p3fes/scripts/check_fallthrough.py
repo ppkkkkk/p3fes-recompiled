@@ -27,6 +27,11 @@ for name in sorted(os.listdir(folder)):
         continue
     end, last = int(m.group(2), 16), int(tail.group(1), 16)
     if last != end and last not in starts:
+        # An unconditional jump (jr / j) whose delay slot lies past the end never falls through: no continuation
+        # entry there (one would also shadow the next function's entry, e.g. an HLE-bound sceSifInitRpc).
+        jump = re.search(r"// 0x%x: 0x[0-9a-f]+\s+(jr|j)\s" % (end - 4), text)
+        if jump:
+            continue
         print(f"{name}: falls through to 0x{last:x} (function ends at 0x{end:x}), no entry there")
         bad += 1
 print(f"{bad} function(s) fall through into the middle of another")
